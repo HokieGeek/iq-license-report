@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	nexusiq "github.com/sonatype-nexus-community/gonexus/iq"
 )
@@ -44,18 +45,23 @@ func writeHTML(w io.Writer, appID string, licenses []nexusiq.License) error {
 }
 
 func main() {
-	iqServerPtr := flag.String("iq", "http://localhost:8070", "")
-	// iqAuthPtr := flag.String("auth", "admin:admin123", "")
+	iqServerPtr := flag.String("iq", "http://localhost:8070", "The host and port of the IQ Server with the report")
+	iqAuthPtr := flag.String("auth", "admin:admin123", "The username and password to use with the IQ Server")
 
 	appIDPtr := flag.String("appId", "", "The public ID of the app whose report you need")
 	stagePtr := flag.String("stage", "build", "The stage of the report for the given app")
 
-	filePtr := flag.String("file", "", "File to save the report into")
-	servePtr := flag.Bool("serve", false, "When true it will server the report")
+	filePtr := flag.String("file", "", "Filename to save the HTML report as")
+	servePortPtr := flag.String("serve", "", "Set the value a port to serve the HTML report on")
 
 	flag.Parse()
 
-	iq, err := nexusiq.New(*iqServerPtr, "admin", "admin123")
+	if *appIDPtr == "" {
+		panic("appId is a required argument")
+	}
+
+	auth := strings.Split(*iqAuthPtr, ":")
+	iq, err := nexusiq.New(*iqServerPtr, auth[0], auth[1])
 	if err != nil {
 		panic(err)
 	}
@@ -84,7 +90,7 @@ func main() {
 	}
 
 	switch {
-	case *servePtr:
+	case *servePortPtr != "":
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			if err := writeHTML(w, *appIDPtr, licenses); err != nil {
 				log.Printf("could not serve page: %v\n", err)
@@ -92,7 +98,7 @@ func main() {
 			}
 		})
 
-		log.Fatal(http.ListenAndServe(":9898", nil))
+		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", *servePortPtr), nil))
 	case *filePtr != "":
 		fmt.Println(report.Components[0].LicensesData)
 
@@ -110,5 +116,7 @@ func main() {
 		w := bufio.NewWriter(fo)
 
 		writeHTML(w, *appIDPtr, nil)
+	default:
+		panic("One of file or serve must be used. See help")
 	}
 }
